@@ -1,7 +1,8 @@
 import React from "react";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
+import { useQuery } from "react-query";
 
 type CSVFileImportProps = {
   url: string;
@@ -10,6 +11,26 @@ type CSVFileImportProps = {
 
 export default function CSVFileImport({ url, title }: CSVFileImportProps) {
   const [file, setFile] = React.useState<File>();
+  const { refetch } = useQuery<string, AxiosError>(
+    "signedUrl",
+    async () => {
+      const authorization_token = localStorage.getItem("authorization_token");
+      const res = await axios.get<{ signedUrl: string }>(url, {
+        params: {
+          fileName: encodeURIComponent(String(file?.name)),
+        },
+        headers: !!authorization_token
+          ? {
+              Authorization: `Basic ${authorization_token}`,
+            }
+          : undefined,
+      });
+      return res.data?.signedUrl;
+    },
+    {
+      enabled: false,
+    }
+  );
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -25,18 +46,12 @@ export default function CSVFileImport({ url, title }: CSVFileImportProps) {
 
   const uploadFile = async () => {
     console.log("uploadFile to", url, file);
-    if (file) {
-      // Get the presigned URL
-      const response = await axios({
-        method: "GET",
-        url,
-        params: {
-          fileName: encodeURIComponent(file.name),
-        },
-      });
-      console.log("File to upload: ", file.name);
-      console.log("Uploading to: ", response.data.signedUrl);
-      const result = await fetch(response.data.signedUrl, {
+    // Get the presigned URL
+    const { data: signedUrl, isSuccess } = await refetch();
+    if (isSuccess) {
+      console.log("File to upload: ", file?.name);
+      console.log("Uploading to: ", signedUrl);
+      const result = await fetch(signedUrl, {
         method: "PUT",
         body: file,
       });
